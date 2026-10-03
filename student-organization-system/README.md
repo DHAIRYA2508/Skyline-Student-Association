@@ -31,7 +31,12 @@ The **Student Organization Management System** is a unified web platform built f
 
 ---
 
-## 3. Architecture
+## 3. Architecture & Requirements
+
+- **Architecture Documentation**: [docs/architecture.md](file:///c:/Users/Dhruv%20Rathod/Desktop/Skyline-Student-Association/student-organization-system/docs/architecture.md)
+- **Requirements Specification**: [docs/requirements.md](file:///c:/Users/Dhruv%20Rathod/Desktop/Skyline-Student-Association/student-organization-system/docs/requirements.md)
+- **API Specification**: [docs/api.md](file:///c:/Users/Dhruv%20Rathod/Desktop/Skyline-Student-Association/student-organization-system/docs/api.md)
+- **Development Guidelines**: [docs/development.md](file:///c:/Users/Dhruv%20Rathod/Desktop/Skyline-Student-Association/student-organization-system/docs/development.md)
 
 The system follows a modern decoupled architecture:
 
