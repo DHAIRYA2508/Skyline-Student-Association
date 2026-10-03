@@ -1,8 +1,18 @@
+import { BrowserRouter } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { Navbar } from './layouts/Navbar';
+import { AppRoutes } from './routes/AppRoutes';
+
 function App() {
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', fontFamily: 'sans-serif' }}>
-      <h1>Student Organization Management System</h1>
-    </div>
+    <BrowserRouter>
+      <AuthProvider>
+        <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
+          <Navbar />
+          <AppRoutes />
+        </div>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 
