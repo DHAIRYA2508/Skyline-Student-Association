@@ -55,6 +55,8 @@ class UserProfileResponse(BaseModel):
     last_name: str
     phone: Optional[str] = None
     student_id: Optional[str] = None
+    is_admin: bool = False
+    role: str = "MEMBER"
     membership: Optional[MembershipDetail] = None
 
 

@@ -4,10 +4,11 @@ import { useAuth } from '../context/AuthContext';
 import { Login } from '../pages/auth/Login';
 import { Register } from '../pages/auth/Register';
 import { MemberDashboard } from '../pages/dashboard/MemberDashboard';
+import { AdminDashboard } from '../pages/dashboard/AdminDashboard';
 import { MemberVerification } from '../pages/members/MemberVerification';
 
 export const AppRoutes: React.FC = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -22,7 +23,21 @@ export const AppRoutes: React.FC = () => {
       <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
-      <Route path="/dashboard" element={isAuthenticated ? <MemberDashboard /> : <Navigate to="/login" replace />} />
+      <Route
+        path="/dashboard"
+        element={
+          isAuthenticated ? (
+            user?.is_admin ? (
+              <AdminDashboard />
+            ) : (
+              <MemberDashboard />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route path="/admin/dashboard" element={isAuthenticated ? <AdminDashboard /> : <Navigate to="/login" replace />} />
       <Route path="/verify" element={<MemberVerification />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -188,6 +188,7 @@ def register_student(req: StudentRegisterRequest, db: Session = Depends(get_db))
 
     membership_detail = build_membership_detail(db, member_id_bytes)
 
+    is_admin = user.email.lower().endswith("@skyline-sa.org") or "admin" in user.email.lower()
     user_profile = UserProfileResponse(
         id=user_str_id,
         email=user.email,
@@ -195,6 +196,8 @@ def register_student(req: StudentRegisterRequest, db: Session = Depends(get_db))
         last_name=user.last_name,
         phone=user.phone,
         student_id=member.student_id,
+        is_admin=is_admin,
+        role="ADMIN" if is_admin else "MEMBER",
         membership=membership_detail,
     )
 
@@ -225,6 +228,7 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     member = db.query(Member).filter(Member.user_id == user.id).first()
     membership_detail = build_membership_detail(db, member.id) if member else None
 
+    is_admin = user.email.lower().endswith("@skyline-sa.org") or "admin" in user.email.lower()
     user_profile = UserProfileResponse(
         id=user_str_id,
         email=user.email,
@@ -232,6 +236,8 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         last_name=user.last_name,
         phone=user.phone,
         student_id=member.student_id if member else None,
+        is_admin=is_admin,
+        role="ADMIN" if is_admin else "MEMBER",
         membership=membership_detail,
     )
 
@@ -248,6 +254,7 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
     member = db.query(Member).filter(Member.user_id == current_user.id).first()
     membership_detail = build_membership_detail(db, member.id) if member else None
 
+    is_admin = current_user.email.lower().endswith("@skyline-sa.org") or "admin" in current_user.email.lower()
     return UserProfileResponse(
         id=user_str_id,
         email=current_user.email,
@@ -255,5 +262,7 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
         last_name=current_user.last_name,
         phone=current_user.phone,
         student_id=member.student_id if member else None,
+        is_admin=is_admin,
+        role="ADMIN" if is_admin else "MEMBER",
         membership=membership_detail,
     )

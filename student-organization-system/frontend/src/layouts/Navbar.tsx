@@ -31,7 +31,9 @@ export const Navbar: React.FC = () => {
             <div style={styles.userInfo}>
               <User size={18} />
               <span>{user?.first_name} {user?.last_name}</span>
-              {user?.membership?.dues_paid ? (
+              {user?.is_admin ? (
+                <span style={styles.adminBadge}>ADMIN</span>
+              ) : user?.membership?.dues_paid ? (
                 <span style={styles.paidBadge}>
                   <CheckCircle size={14} /> Dues Paid
                 </span>
@@ -105,6 +107,14 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0.4rem 0.8rem',
     borderRadius: '20px',
     fontSize: '0.9rem',
+  },
+  adminBadge: {
+    backgroundColor: '#3b82f6',
+    color: '#ffffff',
+    padding: '0.1rem 0.5rem',
+    borderRadius: '10px',
+    fontSize: '0.75rem',
+    fontWeight: '600',
   },
   paidBadge: {
     display: 'flex',

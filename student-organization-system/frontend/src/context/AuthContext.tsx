@@ -22,6 +22,8 @@ export interface UserProfile {
   last_name: string;
   phone?: string;
   student_id?: string;
+  is_admin?: boolean;
+  role?: string;
   membership?: MembershipDetail;
 }
 
