@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 
@@ -206,7 +207,8 @@ def register_student(req: StudentRegisterRequest, db: Session = Depends(get_db))
 
 @router.post("/login", response_model=AuthTokenResponse)
 def login(req: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == req.email).first()
+    email_clean = req.email.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email_clean).first()
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -1,8 +1,23 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.auth import router as auth_router
 from app.api.v1.members import router as members_router
+from app.db.session import SessionLocal
+from app.db.init_db import init_db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize DB tables and seed demo data on startup
+    db = SessionLocal()
+    try:
+        init_db(db)
+    finally:
+        db.close()
+    yield
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -10,6 +25,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

@@ -10,4 +10,6 @@ def test_root_endpoint():
     assert response.json() == {
         "message": "Student Organization Management System API",
         "status": "running",
+        "docs": "/docs",
     }
+
