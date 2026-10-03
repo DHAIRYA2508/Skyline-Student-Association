@@ -19,3 +19,12 @@ class AuditLog(Base):
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(String(500), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+from sqlalchemy import event as _event
+
+
+@_event.listens_for(AuditLog, "before_update")
+@_event.listens_for(AuditLog, "before_delete")
+def _audit_is_append_only(mapper, connection, target):
+    raise ValueError("Audit logs are append-only.")

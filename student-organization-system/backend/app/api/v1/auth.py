@@ -1,269 +1,128 @@
-import uuid
-from typing import Optional
-from datetime import datetime, date, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from jose import JWTError, jwt
 
-from app.db.session import get_db
+from app.api.deps import Ctx, current_ctx, load_access
 from app.core.config import settings
-from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token
-from app.models.auth import Organization, User, Member, MembershipPlan, Membership
-from app.schemas.auth import (
-    MembershipPlanResponse,
-    StudentRegisterRequest,
-    LoginRequest,
-    AuthTokenResponse,
-    UserProfileResponse,
-    MembershipDetail,
-)
+from app.core.security import (create_access_token, generate_refresh_token, get_password_hash, hash_token,
+                               verify_password)
+from app.db.session import get_db
+from app.models.member import Member
+from app.models.organization import Organization, RefreshToken, Role, User, UserRole
+from app.schemas.requests import LoginIn, RefreshIn, RegisterIn
+from app.services import audit, membership as msvc
+from app.utils.common import new_id, now, s
 
-router = APIRouter(prefix="/auth", tags=["Authentication & Membership"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-def uuid_to_str(binary_uuid) -> str:
-    if isinstance(binary_uuid, bytes):
-        return str(uuid.UUID(bytes=binary_uuid))
-    return str(binary_uuid)
+def profile(db: Session, user: User) -> dict:
+    roles, perms = load_access(db, user)
+    member = db.query(Member).filter(Member.user_id == s(user.id), Member.is_deleted == False).first()  # noqa: E712
+    return {
+        "id": s(user.id), "email": user.email, "first_name": user.first_name, "last_name": user.last_name,
+        "phone": user.phone, "organization_id": s(user.organization_id), "roles": roles,
+        "permissions": sorted(perms), "is_staff": any(r not in ("MEMBER", "VOLUNTEER") for r in roles),
+        "member_id": s(member.id) if member else None, "student_id": member.student_id if member else None,
+        "membership": msvc.summary(db, member) if member else None,
+    }
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-        user_id_str: str = payload.get("sub")
-        if user_id_str is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-
-    user_bytes = uuid.UUID(user_id_str).bytes
-    user = db.query(User).filter(User.id == user_bytes, User.is_active == True).first()
-    if user is None:
-        raise credentials_exception
-    return user
+def issue_tokens(db: Session, user: User, request: Request, family_id=None) -> dict:
+    refresh = generate_refresh_token()
+    db.add(RefreshToken(id=new_id(), user_id=s(user.id), token_hash=hash_token(refresh), family_id=family_id or new_id(),
+                        expires_at=now() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+                        device_info=(request.headers.get("user-agent") or "")[:500],
+                        ip_address=request.client.host if request.client else None))
+    return {"access_token": create_access_token(s(user.id)), "refresh_token": refresh, "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60}
 
 
-def build_membership_detail(db: Session, member_id_bytes) -> Optional[MembershipDetail]:
-    membership = (
-        db.query(Membership)
-        .filter(Membership.member_id == member_id_bytes)
-        .order_by(Membership.created_at.desc())
-        .first()
-    )
-    if not membership:
-        return None
-
-    plan = db.query(MembershipPlan).filter(MembershipPlan.id == membership.membership_plan_id).first()
-    today = date.today()
-    days_until_expiry = (membership.end_date - today).days
-
-    dues_paid = membership.payment_status.upper() == "PAID"
-    needs_renewal = (days_until_expiry <= 30) or (membership.status.upper() == "EXPIRED")
-
-    return MembershipDetail(
-        membership_id=uuid_to_str(membership.id),
-        plan_name=plan.name if plan else "Standard Membership",
-        start_date=membership.start_date.isoformat(),
-        end_date=membership.end_date.isoformat(),
-        status=membership.status.upper(),
-        payment_status=membership.payment_status.upper(),
-        dues_paid=dues_paid,
-        event_discount_percentage=float(plan.event_discount_percentage) if plan else 0.0,
-        merchandise_discount_percentage=float(plan.merchandise_discount_percentage) if plan else 0.0,
-        days_until_expiry=days_until_expiry,
-        needs_renewal_reminder=needs_renewal,
-    )
-
-
-@router.get("/plans", response_model=list[MembershipPlanResponse])
-def get_membership_plans(db: Session = Depends(get_db)):
-    plans = db.query(MembershipPlan).filter(MembershipPlan.is_active == True).all()
-    res = []
-    for p in plans:
-        res.append(
-            MembershipPlanResponse(
-                id=uuid_to_str(p.id),
-                name=p.name,
-                description=p.description,
-                price=float(p.price),
-                currency=p.currency,
-                duration_months=p.duration_months,
-                event_discount_percentage=float(p.event_discount_percentage),
-                merchandise_discount_percentage=float(p.merchandise_discount_percentage),
-            )
-        )
-    return res
-
-
-@router.post("/register", response_model=AuthTokenResponse)
-def register_student(req: StudentRegisterRequest, db: Session = Depends(get_db)):
-    org = db.query(Organization).first()
+@router.post("/register", status_code=201)
+def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
+    q = db.query(Organization).filter(Organization.is_active == True)  # noqa: E712
+    org = q.filter(Organization.slug == body.organization_slug).first() if body.organization_slug else q.order_by(Organization.created_at).first()
     if not org:
-        raise HTTPException(status_code=400, detail="Organization context not initialized")
-
-    # Check existing user
-    existing_user = db.query(User).filter(User.organization_id == org.id, User.email == req.email).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="User with this email already exists")
-
-    user_id_bytes = uuid.uuid4().bytes
-    user = User(
-        id=user_id_bytes,
-        organization_id=org.id,
-        email=req.email,
-        password_hash=get_password_hash(req.password),
-        first_name=req.first_name,
-        last_name=req.last_name,
-        phone=req.phone,
-        is_active=True,
-    )
+        raise HTTPException(400, "Organization not found")
+    email = body.email.lower()
+    if db.query(User).filter(User.organization_id == s(org.id), func.lower(User.email) == email).first():
+        raise HTTPException(409, "An account with this email already exists")
+    if db.query(Member).filter(Member.organization_id == s(org.id), Member.student_id == body.student_id).first():
+        raise HTTPException(409, "This student ID is already registered")
+    user = User(id=new_id(), organization_id=s(org.id), email=email, password_hash=get_password_hash(body.password),
+                password_algorithm="bcrypt", first_name=body.first_name, last_name=body.last_name, phone=body.phone)
     db.add(user)
     db.flush()
-
-    # Create Member record
-    member_id_bytes = uuid.uuid4().bytes
-    member = Member(
-        id=member_id_bytes,
-        organization_id=org.id,
-        user_id=user_id_bytes,
-        student_id=req.student_id,
-        first_name=req.first_name,
-        last_name=req.last_name,
-        email=req.email,
-        phone=req.phone,
-        join_date=date.today(),
-        status="ACTIVE" if req.dues_paid else "PENDING",
-    )
-    db.add(member)
+    db.add(Member(id=new_id(), organization_id=s(org.id), user_id=s(user.id), student_id=body.student_id,
+                  first_name=body.first_name, last_name=body.last_name, email=email, phone=body.phone,
+                  join_date=datetime.utcnow().date(), status="PENDING"))
+    role = db.query(Role).filter(Role.organization_id == s(org.id), Role.name == "MEMBER").first()
+    if role:
+        db.add(UserRole(user_id=s(user.id), role_id=s(role.id)))
     db.flush()
-
-    # Find chosen or default Membership Plan
-    if req.membership_plan_id:
-        try:
-            plan_bytes = uuid.UUID(req.membership_plan_id).bytes
-            plan = db.query(MembershipPlan).filter(MembershipPlan.id == plan_bytes).first()
-        except ValueError:
-            plan = None
-    else:
-        plan = db.query(MembershipPlan).filter(MembershipPlan.is_active == True).first()
-
-    if not plan:
-        plan = db.query(MembershipPlan).first()
-
-    # Create Membership Record (1 year duration or plan duration)
-    months = plan.duration_months if plan else 12
-    start_date = date.today()
-    # End of academic year / period
-    end_date = start_date + timedelta(days=365)
-
-    payment_status = "PAID" if req.dues_paid else "PENDING"
-    membership_status = "ACTIVE" if req.dues_paid else "PENDING"
-
-    membership = Membership(
-        id=uuid.uuid4().bytes,
-        organization_id=org.id,
-        member_id=member_id_bytes,
-        membership_plan_id=plan.id if plan else uuid.uuid4().bytes,
-        start_date=start_date,
-        end_date=end_date,
-        status=membership_status,
-        amount=plan.price if plan else 0.00,
-        currency=plan.currency if plan else "USD",
-        payment_status=payment_status,
-    )
-    db.add(membership)
+    audit.log(db, None, "USER_REGISTERED", "User", user.id, new={"email": email}, org_id=org.id, actor_id=user.id)
+    tokens = issue_tokens(db, user, request)
     db.commit()
-
-    # Create JWT
-    user_str_id = str(uuid.UUID(bytes=user_id_bytes))
-    access_token = create_access_token(subject=user_str_id)
-    refresh_token = create_refresh_token(subject=user_str_id)
-
-    membership_detail = build_membership_detail(db, member_id_bytes)
-
-    is_admin = user.email.lower().endswith("@skyline-sa.org") or "admin" in user.email.lower()
-    user_profile = UserProfileResponse(
-        id=user_str_id,
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        phone=user.phone,
-        student_id=member.student_id,
-        is_admin=is_admin,
-        role="ADMIN" if is_admin else "MEMBER",
-        membership=membership_detail,
-    )
-
-    return AuthTokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        user=user_profile,
-    )
+    return {**tokens, "user": profile(db, user)}
 
 
-@router.post("/login", response_model=AuthTokenResponse)
-def login(req: LoginRequest, db: Session = Depends(get_db)):
-    email_clean = req.email.strip().lower()
-    user = db.query(User).filter(func.lower(User.email) == email_clean).first()
-    if not user or not verify_password(req.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-        )
-
-    user.last_login_at = datetime.utcnow()
+@router.post("/login")
+def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
+    user = db.query(User).filter(func.lower(User.email) == body.email.strip().lower(),
+                                 User.is_deleted == False).first()  # noqa: E712
+    bad = HTTPException(401, "Incorrect email or password")
+    if not user:
+        raise bad
+    if user.locked_until and user.locked_until > now():
+        raise HTTPException(423, "Account temporarily locked after too many failed attempts. Try again later.")
+    if not user.is_active or not verify_password(body.password, user.password_hash):
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+        if user.failed_login_attempts >= settings.MAX_LOGIN_ATTEMPTS:
+            user.locked_until = now() + timedelta(minutes=settings.LOCKOUT_MINUTES)
+            user.failed_login_attempts = 0
+        db.commit()
+        raise bad
+    user.failed_login_attempts, user.locked_until, user.last_login_at = 0, None, now()
+    msvc.sweep(db, user.organization_id)
+    tokens = issue_tokens(db, user, request)
     db.commit()
-
-    user_str_id = uuid_to_str(user.id)
-    access_token = create_access_token(subject=user_str_id)
-    refresh_token = create_refresh_token(subject=user_str_id)
-
-    member = db.query(Member).filter(Member.user_id == user.id).first()
-    membership_detail = build_membership_detail(db, member.id) if member else None
-
-    is_admin = user.email.lower().endswith("@skyline-sa.org") or "admin" in user.email.lower()
-    user_profile = UserProfileResponse(
-        id=user_str_id,
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        phone=user.phone,
-        student_id=member.student_id if member else None,
-        is_admin=is_admin,
-        role="ADMIN" if is_admin else "MEMBER",
-        membership=membership_detail,
-    )
-
-    return AuthTokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        user=user_profile,
-    )
+    return {**tokens, "user": profile(db, user)}
 
 
-@router.get("/me", response_model=UserProfileResponse)
-def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    user_str_id = uuid_to_str(current_user.id)
-    member = db.query(Member).filter(Member.user_id == current_user.id).first()
-    membership_detail = build_membership_detail(db, member.id) if member else None
+@router.post("/refresh")
+def refresh(body: RefreshIn, request: Request, db: Session = Depends(get_db)):
+    row = db.query(RefreshToken).filter(RefreshToken.token_hash == hash_token(body.refresh_token)).first()
+    if not row:
+        raise HTTPException(401, "Invalid refresh token")
+    if row.revoked_at is not None:
+        # reuse of a rotated token => assume theft, kill the whole family
+        for t in db.query(RefreshToken).filter(RefreshToken.family_id == s(row.family_id)).all():
+            t.revoked_at = t.revoked_at or now()
+        db.commit()
+        raise HTTPException(401, "Refresh token has been revoked")
+    if row.expires_at < now():
+        raise HTTPException(401, "Refresh token expired")
+    user = db.query(User).filter(User.id == s(row.user_id), User.is_active == True).first()  # noqa: E712
+    if not user:
+        raise HTTPException(401, "User is inactive")
+    row.revoked_at = now()
+    tokens = issue_tokens(db, user, request, family_id=s(row.family_id))
+    db.commit()
+    return tokens
 
-    is_admin = current_user.email.lower().endswith("@skyline-sa.org") or "admin" in current_user.email.lower()
-    return UserProfileResponse(
-        id=user_str_id,
-        email=current_user.email,
-        first_name=current_user.first_name,
-        last_name=current_user.last_name,
-        phone=current_user.phone,
-        student_id=member.student_id if member else None,
-        is_admin=is_admin,
-        role="ADMIN" if is_admin else "MEMBER",
-        membership=membership_detail,
-    )
+
+@router.post("/logout")
+def logout(body: RefreshIn, db: Session = Depends(get_db)):
+    row = db.query(RefreshToken).filter(RefreshToken.token_hash == hash_token(body.refresh_token)).first()
+    if row:
+        for t in db.query(RefreshToken).filter(RefreshToken.family_id == s(row.family_id)).all():
+            t.revoked_at = t.revoked_at or now()
+        db.commit()
+    return {"ok": True}
+
+
+@router.get("/me")
+def me(ctx: Ctx = Depends(current_ctx)):
+    return profile(ctx.db, ctx.user)

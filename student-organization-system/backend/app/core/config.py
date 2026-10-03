@@ -17,13 +17,17 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = None
 
     # Security & JWT Configuration
-    JWT_SECRET_KEY: str = "super-secret-key-for-skyline-student-association-2026"
+    JWT_SECRET_KEY: str = "dev-only-change-me-in-env"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+    CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]
+    SEED_DEMO_DATA: bool = True
+    BCRYPT_ROUNDS: int = 12
+    MAX_LOGIN_ATTEMPTS: int = 5
+    LOCKOUT_MINUTES: int = 10
 
     model_config = SettingsConfigDict(
         env_file=".env", case_sensitive=True, extra="ignore"

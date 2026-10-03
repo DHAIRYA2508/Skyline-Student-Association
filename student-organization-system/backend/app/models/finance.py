@@ -66,5 +66,15 @@ class Transaction(Base):
     transaction_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     reference_type = Column(String(50), nullable=True)
     reference_id = Column(GUID, nullable=True)
+    reversal_of_id = Column(GUID, ForeignKey("transactions.id"), nullable=True)
     created_by = Column(GUID, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+from sqlalchemy import event as _event
+
+
+@_event.listens_for(Transaction, "before_update")
+@_event.listens_for(Transaction, "before_delete")
+def _ledger_is_append_only(mapper, connection, target):
+    raise ValueError("Ledger transactions are immutable; post a reversal instead.")

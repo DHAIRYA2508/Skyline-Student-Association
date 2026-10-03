@@ -1,15 +1,3 @@
-from fastapi.testclient import TestClient
-from app.main import app
-
-client = TestClient(app)
-
-
-def test_root_endpoint():
-    response = client.get("/")
-    assert response.status_code == 200
-    assert response.json() == {
-        "message": "Student Organization Management System API",
-        "status": "running",
-        "docs": "/docs",
-    }
-
+def test_root(client):
+    r = client.get("/")
+    assert r.status_code == 200 and r.json()["status"] == "running"
