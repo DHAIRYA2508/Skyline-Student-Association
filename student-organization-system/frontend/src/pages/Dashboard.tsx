@@ -1,44 +1,131 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp, money, fdate } from '../store/store';
 import { Head, Stat } from '../store/ui';
+import { api } from '../services/api';
+import type { DashboardData, ApiEvent, Announcement } from '../services/api';
+
 
 export function Dashboard() {
-  const { db, me, myMembership, isActiveMember, startPay, buyMembership, notify, postAnnouncement } = useApp();
-  const admin = me!.role === 'admin';
-  const today = new Date().toISOString().slice(0, 10);
-  const days = myMembership ? Math.ceil((+new Date(myMembership.end) - Date.now()) / 864e5) : null;
-  const plan = myMembership ? db.plans.find(p => p.id === myMembership.planId) : null;
-  const up = db.events.filter(e => e.date.slice(0, 10) >= today).sort((a, b) => a.date.localeCompare(b.date));
-  const inc = db.ledger.filter(l => l.type === 'in').reduce((s, l) => s + l.amount, 0);
-  const out = db.ledger.filter(l => l.type === 'out').reduce((s, l) => s + l.amount, 0);
-  const expiring = db.memberships.filter(m => { const d = Math.ceil((+new Date(m.end) - Date.now()) / 864e5); return d <= 60; });
-  const renew = () => myMembership && startPay({ title: `Renew ${plan!.name} membership`, amount: plan!.price, onSuccess: () => buyMembership(plan!.id) });
+  const { me, refreshKey } = useApp();
+  const [dash, setDash] = useState<DashboardData | null>(null);
+  const [events, setEvents] = useState<ApiEvent[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    setErr('');
+    Promise.all([
+      api.get<DashboardData>('/dashboard'),
+      api.get<{ items: ApiEvent[] }>('/events?page_size=5'),
+      api.get<{ items: Announcement[] }>('/announcements?page_size=5'),
+    ])
+      .then(([d, ev, ann]) => {
+        setDash(d);
+        setEvents(ev.items ?? []);
+        setAnnouncements(ann.items ?? []);
+      })
+      .catch(e => setErr(e.message));
+  }, [refreshKey]);
+
+  const isStaff = me?.is_staff ?? false;
+  const membership = dash?.member?.membership;
+  const daysLeft = membership?.days_until_expiry ?? null;
+  const upcomingEvents = events.filter(e => new Date(e.start_datetime) >= new Date());
+
+  if (err) return <><Head title="Dashboard" /><div className="res bad">{err}</div></>;
+
   return (<>
-    <Head title={`Welcome, ${me!.name.split(' ')[0]}`} sub={admin ? 'Club overview for the leadership team' : 'Here is what is happening at Skyline'} />
-    {!admin && !isActiveMember(me!.id) && <div className="banner">You don't have an active membership. <Link to="/membership">Choose a plan</Link> to unlock member prices.</div>}
-    {!admin && days !== null && days >= 0 && days <= 60 && <div className="banner">Your membership expires in {days} days. <button className="sm pri" onClick={renew}>Renew now</button></div>}
-    {admin && <div className="grid g4">
-      <Stat l="Members" v={db.memberships.filter(m => isActiveMember(m.userId)).length} sub="active" />
-      <Stat l="Money in" v={money(inc)} /><Stat l="Money out" v={money(out)} /><Stat l="Balance" v={money(inc - out)} />
-    </div>}
-    {!admin && <div className="grid g3">
-      <div className="card stat"><div className="l">Membership</div><div className="v">{plan?.name ?? 'None'}</div><div className="mut sans" style={{ fontSize: 12 }}>{myMembership ? `Valid until ${fdate(myMembership.end)}` : 'Not enrolled'}</div></div>
-      <Stat l="My tickets" v={db.tickets.filter(t => t.userId === me!.id).length} />
-      <Stat l="Merch orders" v={db.orders.filter(o => o.userId === me!.id).length} />
-    </div>}
-    <div className="grid g2 mt">
-      <div className="card"><div className="row sp"><h2>Upcoming events</h2><Link to="/events">All</Link></div>
-        {up.map(e => <div key={e.id} className="row sp mt"><div><b>{e.name}</b><div className="mut sans" style={{ fontSize: 13 }}>{fdate(e.date)} · {e.venue}</div></div><span className="badge">{e.capacity - db.tickets.filter(t => t.eventId === e.id).length} seats left</span></div>)}
+    <Head
+      title={`Welcome, ${me?.first_name}`}
+      sub={isStaff ? 'Club overview for the leadership team' : 'Here is what is happening at Skyline'}
+    />
+
+    {/* Membership warnings */}
+    {!isStaff && !membership?.is_active && (
+      <div className="banner">You don't have an active membership. <Link to="/membership">Choose a plan</Link> to unlock member prices.</div>
+    )}
+    {!isStaff && daysLeft !== null && daysLeft >= 0 && daysLeft <= 60 && (
+      <div className="banner">Your membership expires in {daysLeft} days. <Link to="/membership"><button className="sm pri">Renew now</button></Link></div>
+    )}
+
+    {/* Stats */}
+    {isStaff && dash?.overview ? (
+      <div className="grid g4">
+        <Stat l="Total members" v={dash.overview.members} />
+        <Stat l="Active memberships" v={dash.overview.active_memberships} />
+        <Stat l="Upcoming events" v={dash.overview.events} />
+        <Stat l="Pending expenses" v={dash.overview.pending_expenses} />
       </div>
-      <div className="card"><div className="row sp"><h2>Latest announcements</h2><Link to="/announcements">All</Link></div>
-        {db.announcements.slice(0, 3).map(a => <div key={a.id} className="mt"><b>{a.title}</b><div className="mut sans" style={{ fontSize: 13 }}>{fdate(a.date)}</div></div>)}
+    ) : !isStaff && (
+      <div className="grid g3">
+        <div className="card stat">
+          <div className="l">Membership</div>
+          <div className="v">{membership?.plan_name ?? 'None'}</div>
+          <div className="mut sans" style={{ fontSize: 12 }}>
+            {membership?.is_active ? `Valid until ${fdate(membership.end_date)}` : 'Not enrolled'}
+          </div>
+        </div>
+        <Stat l="My tickets" v={dash?.member?.tickets ?? '—'} />
+        <Stat l="Merch orders" v={dash?.member?.orders ?? '—'} />
+      </div>
+    )}
+
+    {/* Finance overview for staff */}
+    {isStaff && dash?.finance && (
+      <div className="grid g4 mt">
+        <Stat l="Total income" v={money(dash.finance.total_income ?? 0)} />
+        <Stat l="Total expenses" v={money((dash.finance as any).total_expenses ?? dash.finance.total_expense ?? 0)} />
+        <Stat l="Balance" v={money(dash.finance.balance ?? 0)} />
+        <Stat l="Pending expenses" v={dash.finance.pending_expenses?.length ?? 0} sub="awaiting approval" />
+      </div>
+    )}
+
+    <div className="grid g2 mt">
+      {/* Upcoming events */}
+      <div className="card">
+        <div className="row sp"><h2>Upcoming events</h2><Link to="/events">All</Link></div>
+        {!dash ? <div className="mut sans" style={{ fontSize: 13, marginTop: 8 }}>Loading…</div> :
+          upcomingEvents.length === 0 ? <div className="mut sans" style={{ fontSize: 13, marginTop: 8 }}>No upcoming events.</div> :
+            upcomingEvents.map(e => (
+              <div key={e.id} className="row sp mt">
+                <div>
+                  <b>{e.name}</b>
+                  <div className="mut sans" style={{ fontSize: 13 }}>{fdate(e.start_datetime)} · {e.venue}</div>
+                </div>
+                <span className="badge">{e.capacity - (e.sold ?? 0)} seats left</span>
+              </div>
+            ))}
+      </div>
+
+      {/* Latest announcements */}
+      <div className="card">
+        <div className="row sp"><h2>Latest announcements</h2><Link to="/announcements">All</Link></div>
+        {!dash ? <div className="mut sans" style={{ fontSize: 13, marginTop: 8 }}>Loading…</div> :
+          announcements.length === 0 ? <div className="mut sans" style={{ fontSize: 13, marginTop: 8 }}>No announcements yet.</div> :
+            announcements.slice(0, 3).map(a => (
+              <div key={a.id} className="mt">
+                <b>{a.title}</b>
+                <div className="mut sans" style={{ fontSize: 13 }}>{fdate(a.published_at ?? a.created_at)}</div>
+              </div>
+            ))}
       </div>
     </div>
-    {admin && <div className="card mt"><h2>Renewals due (next 60 days or lapsed)</h2>
-      <table><thead><tr><th>Member</th><th>Plan</th><th>Expires</th><th></th></tr></thead><tbody>
-        {expiring.length === 0 && <tr><td colSpan={4} className="mut">No renewals due.</td></tr>}
-        {expiring.map(m => { const u = db.users.find(x => x.id === m.userId)!; return <tr key={m.userId}><td>{u.name}</td><td>{db.plans.find(p => p.id === m.planId)!.name}</td><td>{fdate(m.end)}</td>
-          <td><button className="sm" onClick={() => { postAnnouncement({ title: `Renewal reminder: ${u.name}`, body: `Hi ${u.name.split(' ')[0]}, your membership expires on ${fdate(m.end)}. Please renew from My Membership.`, audience: u.name }); notify('Reminder sent to ' + u.name); }}>Send reminder</button></td></tr>; })}
-      </tbody></table></div>}
+
+    {/* Pending expenses for staff */}
+    {isStaff && dash?.finance?.pending_expenses && dash.finance.pending_expenses.length > 0 && (
+      <div className="card mt">
+        <div className="row sp"><h2>Expenses awaiting approval</h2><Link to="/expenses">All</Link></div>
+        <table><thead><tr><th>Description</th><th>Amount</th><th>Status</th></tr></thead><tbody>
+          {dash.finance.pending_expenses.map(e => (
+            <tr key={e.id}>
+              <td>{e.description}</td>
+              <td>{money(e.amount)}</td>
+              <td><span className="badge b-warn">{e.status}</span></td>
+            </tr>
+          ))}
+        </tbody></table>
+      </div>
+    )}
   </>);
 }

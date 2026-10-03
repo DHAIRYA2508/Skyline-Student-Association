@@ -6,28 +6,55 @@ import { useApp, money } from './store';
 export const Head = ({ title, sub, children }: { title: string; sub?: string; children?: ReactNode }) => (
   <div className="head"><div><h1>{title}</h1>{sub && <p>{sub}</p>}</div><div className="row">{children}</div></div>
 );
+
 export const Stat = ({ l, v, sub }: { l: string; v: string | number; sub?: string }) => (
   <div className="card stat"><div className="l">{l}</div><div className="v">{v}</div>{sub && <div className="mut sans" style={{ fontSize: 12 }}>{sub}</div>}</div>
 );
 
 export function Layout() {
   const { me, logout } = useApp();
-  const admin = me?.role === 'admin';
-  const links: [string, string][] = [['/', 'Dashboard'], ['/events', 'Events & Tickets'], ['/announcements', 'Announcements'], ['/shop', 'Merchandise'], ['/fundraisers', 'Fundraisers'], ['/expenses', 'Expenses'], ['/membership', 'My Membership']];
-  const adminLinks: [string, string][] = [['/members', 'Members'], ['/checkin', 'Door Check-in'], ['/finance', 'Finance Ledger']];
+  const isStaff = me?.is_staff ?? false;
+  const canFinance = me?.permissions?.includes('finance.view') ?? false;
+
+  const links: [string, string][] = [
+    ['/', 'Dashboard'],
+    ['/events', 'Events & Tickets'],
+    ['/announcements', 'Announcements'],
+    ['/shop', 'Merchandise'],
+    ['/fundraisers', 'Fundraisers'],
+    ['/expenses', 'Expenses'],
+    ['/membership', 'My Membership'],
+  ];
+  const staffLinks: [string, string][] = [
+    ['/members', 'Members'],
+    ['/checkin', 'Door Check-in'],
+    ...(canFinance ? [['/finance', 'Finance Ledger']] as [string, string][] : []),
+  ];
+
+  const name = me ? `${me.first_name} ${me.last_name}` : '';
+
   return (
     <div className="shell">
       <aside className="side">
         <div className="brand">Skyline<small>Student Association</small></div>
         <nav className="nav">
           {links.map(([to, t]) => <NavLink key={to} to={to} end={to === '/'}>{t}</NavLink>)}
-          {admin && <div className="sec">Leadership</div>}
-          {admin && adminLinks.map(([to, t]) => <NavLink key={to} to={to}>{t}</NavLink>)}
+          {isStaff && <div className="sec">Leadership</div>}
+          {isStaff && staffLinks.map(([to, t]) => <NavLink key={to} to={to}>{t}</NavLink>)}
         </nav>
-        <div className="who"><b>{me?.name}</b><div className="mut">{admin ? 'Leadership team' : 'Member'} · {me?.studentId}</div><button className="sm" style={{ marginTop: 8 }} onClick={logout}>Sign out</button></div>
+        <div className="who">
+          <b>{name}</b>
+          <div className="mut">
+            {me?.roles?.filter(r => r !== 'MEMBER').join(', ') || 'Member'} · {me?.student_id ?? ''}
+          </div>
+          <button className="sm" style={{ marginTop: 8 }} onClick={logout}>Sign out</button>
+        </div>
       </aside>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="mnav">{[...links, ...(admin ? adminLinks : [])].map(([to, t]) => <NavLink key={to} to={to} end={to === '/'}>{t}</NavLink>)}<a href="#/" onClick={logout}>Sign out</a></div>
+        <div className="mnav">
+          {[...links, ...(isStaff ? staffLinks : [])].map(([to, t]) => <NavLink key={to} to={to} end={to === '/'}>{t}</NavLink>)}
+          <a href="#/" onClick={logout}>Sign out</a>
+        </div>
         <main className="main"><Outlet /></main>
       </div>
     </div>
@@ -59,7 +86,11 @@ export function Gateway() {
     setStage('wait');
     setTimeout(() => { setStage('done'); pay.onSuccess(); }, 1800);
   };
-  const close = () => { if (stage === 'wait') return; if (stage === 'done') notify('Payment of ' + money(pay.amount) + ' successful'); setStage('form'); setErr(''); closePay(); };
+  const close = () => {
+    if (stage === 'wait') return;
+    if (stage === 'done') notify('Payment of ' + money(pay.amount) + ' successful');
+    setStage('form'); setErr(''); closePay();
+  };
   const set = (k: string, v: string) => setF({ ...f, [k]: v });
   return (
     <div className="modal"><div className="mbox">
@@ -75,7 +106,7 @@ export function Gateway() {
           {err && <div className="err">{err}</div>}
           <button className="pri" style={{ width: '100%', marginTop: 18, padding: 12 }} onClick={submit}>Pay {money(pay.amount)}</button>
           <button style={{ width: '100%', marginTop: 8 }} onClick={close}>Cancel</button>
-          <div className="mut sans" style={{ fontSize: 11.5, textAlign: 'center', marginTop: 10 }}>Demo gateway — no real money is charged. Any valid-looking details work.</div>
+          <div className="mut sans" style={{ fontSize: 11.5, textAlign: 'center', marginTop: 10 }}>Demo gateway — no real money is charged.</div>
         </>}
         {stage === 'wait' && <div style={{ textAlign: 'center', padding: '40px 0' }}><h3>Processing payment…</h3><p className="mut sans">Please don't close this window.</p></div>}
         {stage === 'done' && <div style={{ textAlign: 'center', padding: '30px 0' }}><div style={{ fontSize: 44, color: 'var(--ok)' }}>✓</div><h2>Payment successful</h2><p className="mut sans">Ref: TXN{Date.now().toString().slice(-9)}</p><button className="pri" onClick={close}>Done</button></div>}

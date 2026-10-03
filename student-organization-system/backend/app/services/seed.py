@@ -86,6 +86,8 @@ def seed_demo(db: Session, org: Organization) -> None:
     staff = {}
     for key, email, pw, first, last, sid, roles in [
         ("root", "contact@skyline-sa.org", "admin123", "Skyline", "Admin", "SKY-00001", ["SUPER_ADMIN"]),
+        ("admin", "admin@skyline.edu", "admin123", "Admin", "User", "SKY-00000", ["SUPER_ADMIN", "TREASURER", "ORGANIZATION_HEAD"]),
+        ("riya", "riya@skyline.edu", "member123", "Riya", "Sharma", "SKY-77889", []),
         ("head", "admin@skyline-sa.org", "admin123", "Alex", "Rivera", "SKY-00002", ["ORGANIZATION_HEAD"]),
         ("treas", "treasurer@skyline-sa.org", "demo1234", "Tara", "Nguyen", "SKY-00003", ["TREASURER"]),
         ("events", "events@skyline-sa.org", "demo1234", "Eli", "Okafor", "SKY-00004", ["EVENT_MANAGER"]),
@@ -102,8 +104,8 @@ def seed_demo(db: Session, org: Organization) -> None:
     U = lambda k: staff[k][0]  # noqa: E731
     M = lambda k: staff[k][1]  # noqa: E731
     root = U("root")
-    for k in ("root", "head", "treas", "events", "inv", "coord", "vol", "john", "lena"):
-        msvc.purchase(db, org.id, U(k), M(k), gold if k in ("root", "head", "john", "vol") else basic, "CARD")
+    for k in ("root", "admin", "riya", "head", "treas", "events", "inv", "coord", "vol", "john", "lena"):
+        msvc.purchase(db, org.id, U(k), M(k), gold if k in ("root", "admin", "riya", "head", "john", "vol") else basic, "CARD")
     _backdated_membership(db, org, U("maya"), M("maya"), basic, today() - timedelta(days=160))   # expires in ~20 days
     _backdated_membership(db, org, U("omar"), M("omar"), basic, today() - timedelta(days=260))   # lapsed
     db.flush()
