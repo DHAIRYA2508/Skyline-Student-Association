@@ -15,7 +15,7 @@ class Product(Base):
     category = Column(String(80), nullable=True)
     image_url = Column(String(500), nullable=True)
     base_price = Column(Numeric(12, 2), nullable=False)
-    currency = Column(String(3), nullable=False, default="USD")
+    currency = Column(String(3), nullable=False, default="INR")
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

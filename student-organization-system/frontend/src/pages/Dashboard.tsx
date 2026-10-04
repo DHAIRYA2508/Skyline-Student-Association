@@ -17,13 +17,13 @@ export function Dashboard() {
     setErr('');
     Promise.all([
       api.get<DashboardData>('/dashboard'),
-      api.get<{ items: ApiEvent[] }>('/events?page_size=5'),
-      api.get<{ items: Announcement[] }>('/announcements?page_size=5'),
+      api.get<any>('/events?scope=upcoming'),
+      api.get<any>('/announcements'),
     ])
       .then(([d, ev, ann]) => {
         setDash(d);
-        setEvents(ev.items ?? []);
-        setAnnouncements(ann.items ?? []);
+        setEvents(Array.isArray(ev) ? ev : (ev.items ?? []));
+        setAnnouncements(Array.isArray(ann) ? ann : (ann.items ?? []));
       })
       .catch(e => setErr(e.message));
   }, [refreshKey]);

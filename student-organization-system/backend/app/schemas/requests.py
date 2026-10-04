@@ -144,6 +144,7 @@ class OrderItemIn(BaseModel):
 class OrderIn(BaseModel):
     items: List[OrderItemIn] = Field(min_length=1)
     payment_method: str = "CARD"
+    discount_percentage: Optional[Decimal] = Field(default=None, ge=0, le=100)
 
 
 class OrderStatusIn(BaseModel):

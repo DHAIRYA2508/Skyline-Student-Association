@@ -116,6 +116,8 @@ export interface MembershipSummary {
   days_until_expiry?: number;
   event_discount?: number;
   merch_discount?: number;
+  event_discount_percentage?: number;
+  merchandise_discount_percentage?: number;
 }
 
 export interface AuthResponse {
@@ -172,13 +174,17 @@ export interface ApiEvent {
 
 export interface Ticket {
   id: string;
-  code: string;
+  code?: string;
+  ticket_code?: string;
   event_id: string;
   event_name: string;
-  holder_name: string;
+  holder_name?: string;
+  buyer_name?: string;
   buyer_email: string;
   status: string;
-  price_paid: number;
+  price_paid?: number;
+  price?: number;
+  qr_token?: string;
   checked_in_at?: string;
 }
 

@@ -41,8 +41,15 @@ def merch_discount_pct(db: Session, member: Optional[Member]) -> D:
     return D(plan.merchandise_discount_percentage) if plan else D(0)
 
 
-def place_order(db: Session, ctx, items, method: str, member: Optional[Member]) -> Order:
+def place_order(db: Session, ctx, items, method: str, member: Optional[Member], custom_discount_pct: Optional[D] = None) -> Order:
     pct = merch_discount_pct(db, member)
+    if custom_discount_pct is not None:
+        try:
+            custom_pct = q(custom_discount_pct)
+            if ctx.can("orders.manage") or ctx.can("products.manage") or custom_pct <= pct:
+                pct = custom_pct
+        except Exception:
+            pass
     order = Order(id=new_id(), organization_id=ctx.org_id, member_id=s(member.id) if member else None,
                   order_number=token_code("ORD", 8), subtotal=0, discount_amount=0, total_amount=0,
                   status="CONFIRMED", payment_status="PAID", payment_method=method)

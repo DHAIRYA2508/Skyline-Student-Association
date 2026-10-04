@@ -8,6 +8,7 @@ export function Expenses() {
   const { me, notify, refreshKey, bump } = useApp();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   const [f, setF] = useState({
     title: '',
@@ -85,34 +86,52 @@ export function Expenses() {
     }
   };
 
+  const filteredExpenses = expenses.filter(e => {
+    const q = search.toLowerCase();
+    return (
+      e.description.toLowerCase().includes(q) ||
+      (e.submitted_by_name || (e as any).submitter || '').toLowerCase().includes(q) ||
+      e.category.toLowerCase().includes(q) ||
+      e.status.toLowerCase().includes(q)
+    );
+  });
+
+  const formatCat = (cat: string) => {
+    return (cat || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const formatStatus = (s: string) => {
+    return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+  };
+
   return (
     <>
       <Head title="Expenses & Reimbursements" sub="Submit expense claims; leadership reviews and processes reimbursements." />
 
       <div className="card" style={{ marginBottom: 18 }}>
-        <h2>Submit an expense claim</h2>
-        <div className="row" style={{ alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ flex: 2, minWidth: 200 }}>
-            <label>Description / purpose</label>
+        <h2>Submit an Expense Claim</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr 1fr 1.2fr auto', gap: 12, alignItems: 'flex-end', marginTop: 8 }}>
+          <div>
+            <label style={{ margin: '0 0 6px' }}>Description / Purpose</label>
             <input
               value={f.title}
               onChange={e => setF({ ...f, title: e.target.value })}
-              placeholder="e.g. Sound equipment rental, pizza"
+              placeholder="e.g. Sound equipment rental, pizza for volunteer meeting"
             />
           </div>
-          <div style={{ flex: 1, minWidth: 140 }}>
-            <label>Category</label>
+          <div>
+            <label style={{ margin: '0 0 6px' }}>Category</label>
             <select value={f.category} onChange={e => setF({ ...f, category: e.target.value })}>
               <option value="SUPPLIES">Supplies</option>
               <option value="EVENT_EXPENSE">Event Expense</option>
               <option value="MARKETING">Marketing</option>
               <option value="MERCHANDISE">Merchandise</option>
               <option value="TRAVEL">Travel</option>
-              <option value="OTHER_EXPENSE">Other</option>
+              <option value="OTHER_EXPENSE">Other Expense</option>
             </select>
           </div>
-          <div style={{ flex: 1, minWidth: 100 }}>
-            <label>Amount (₹)</label>
+          <div>
+            <label style={{ margin: '0 0 6px' }}>Amount (₹)</label>
             <input
               type="number"
               value={f.amount}
@@ -120,60 +139,76 @@ export function Expenses() {
               placeholder="0.00"
             />
           </div>
-          <div style={{ flex: 1, minWidth: 130 }}>
-            <label>Expense Date</label>
+          <div>
+            <label style={{ margin: '0 0 6px' }}>Expense Date</label>
             <input
               type="date"
               value={f.date}
               onChange={e => setF({ ...f, date: e.target.value })}
             />
           </div>
-          <button className="pri" disabled={submitting} onClick={handleSubmit}>
-            {submitting ? 'Submitting…' : 'Submit'}
-          </button>
+          <div>
+            <button className="pri" style={{ height: 38, whiteSpace: 'nowrap', padding: '0 18px' }} disabled={submitting} onClick={handleSubmit}>
+              {submitting ? 'Submitting…' : 'Submit Claim'}
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="card">
-        <h2>Expense Claims</h2>
+        <div className="row sp" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+          <h2>Expense Claims ({expenses.length})</h2>
+          <input
+            type="search"
+            placeholder="Search expenses by item, submitter, category…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ maxWidth: 320 }}
+          />
+        </div>
+
         {loading ? (
           <div className="mut sans" style={{ padding: '12px 0' }}>Loading claims…</div>
         ) : (
-          <table>
+          <table style={{ width: '100%', tableLayout: 'auto' }}>
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Submitted by</th>
-                <th>Description</th>
-                <th>Category</th>
-                <th>Amount</th>
-                <th>Status</th>
-                {(canApprove || canReimburse) && <th>Actions</th>}
+                <th style={{ width: 110, textAlign: 'left' }}>Date</th>
+                <th style={{ width: 140, textAlign: 'left' }}>Submitted by</th>
+                <th style={{ textAlign: 'left' }}>Description</th>
+                <th style={{ width: 140, textAlign: 'left' }}>Category</th>
+                <th style={{ width: 120, textAlign: 'right' }}>Amount</th>
+                <th style={{ width: 120, textAlign: 'center' }}>Status</th>
+                {(canApprove || canReimburse) && <th style={{ width: 160, textAlign: 'right' }}>Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {expenses.length === 0 ? (
-                <tr><td colSpan={7} className="mut">No expense claims found.</td></tr>
+              {filteredExpenses.length === 0 ? (
+                <tr><td colSpan={7} className="mut" style={{ textAlign: 'center', padding: '20px 0' }}>No expense claims match your search.</td></tr>
               ) : (
-                expenses.map(e => (
+                filteredExpenses.map(e => (
                   <tr key={e.id}>
-                    <td>{fdate(e.expense_date)}</td>
-                    <td>{e.submitted_by_name || (e as any).submitter || 'Member'}</td>
-                    <td>{e.description}</td>
-                    <td><span className="badge">{e.category}</span></td>
-                    <td>{money(e.amount)}</td>
-                    <td><span className={'badge ' + badgeClass(e.status)}>{e.status}</span></td>
+                    <td style={{ verticalAlign: 'middle' }}>{fdate(e.expense_date)}</td>
+                    <td style={{ verticalAlign: 'middle' }}><b>{e.submitted_by_name || (e as any).submitter || 'Member'}</b></td>
+                    <td style={{ verticalAlign: 'middle' }}>{e.description}</td>
+                    <td style={{ verticalAlign: 'middle' }}><span className="badge">{formatCat(e.category)}</span></td>
+                    <td style={{ textAlign: 'right', verticalAlign: 'middle', fontWeight: 600 }}>{money(e.amount)}</td>
+                    <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                      <span className={'badge ' + badgeClass(e.status)}>{formatStatus(e.status)}</span>
+                    </td>
                     {(canApprove || canReimburse) && (
-                      <td className="row" style={{ gap: 6 }}>
-                        {e.status === 'SUBMITTED' && canApprove && (
-                          <>
-                            <button className="sm pri" onClick={() => handleReview(e.id, 'APPROVE')}>Approve</button>
-                            <button className="sm" onClick={() => handleReview(e.id, 'REJECT')}>Reject</button>
-                          </>
-                        )}
-                        {e.status === 'APPROVED' && canReimburse && (
-                          <button className="sm pri" onClick={() => handleReimburse(e.id)}>Reimburse</button>
-                        )}
+                      <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                          {e.status === 'SUBMITTED' && canApprove && (
+                            <>
+                              <button className="sm pri" onClick={() => handleReview(e.id, 'APPROVE')}>Approve</button>
+                              <button className="sm" onClick={() => handleReview(e.id, 'REJECT')}>Reject</button>
+                            </>
+                          )}
+                          {e.status === 'APPROVED' && canReimburse && (
+                            <button className="sm pri" onClick={() => handleReimburse(e.id)}>Reimburse</button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -234,14 +269,20 @@ export function Members() {
 
   return (
     <>
-      <Head title="Members" sub="Browse all registered students, verify status, and collect dues." />
+      <Head title="Members Directory" sub="Browse all registered students, verify dues status, and manage rosters." />
 
-      <input
-        placeholder="Search by name, student ID or email…"
-        value={q}
-        onChange={e => setQ(e.target.value)}
-        style={{ maxWidth: 380, marginBottom: 14 }}
-      />
+      <div className="row sp" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+        <input
+          type="search"
+          placeholder="Search by name, student ID or email…"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          style={{ maxWidth: 380 }}
+        />
+        <div className="mut sans" style={{ fontSize: 13, alignSelf: 'center' }}>
+          Showing {members.length} registered member(s)
+        </div>
+      </div>
 
       <div className="card">
         {loading ? (
@@ -250,35 +291,35 @@ export function Members() {
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Student ID</th>
+                <th style={{ width: 160 }}>Name</th>
+                <th style={{ width: 120 }}>Student ID</th>
                 <th>Email</th>
-                <th>Plan</th>
-                <th>Valid Until</th>
-                <th>Membership</th>
-                <th></th>
+                <th style={{ width: 130 }}>Plan Tier</th>
+                <th style={{ width: 120 }}>Valid Until</th>
+                <th style={{ width: 130, textAlign: 'center' }}>Dues Status</th>
+                <th style={{ width: 120, textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {members.length === 0 ? (
-                <tr><td colSpan={7} className="mut">No members matching search query.</td></tr>
+                <tr><td colSpan={7} className="mut" style={{ textAlign: 'center', padding: '20px 0' }}>No members matching search query.</td></tr>
               ) : (
                 members.map(u => (
                   <tr key={u.id}>
-                    <td><b>{u.first_name} {u.last_name}</b></td>
-                    <td><code>{u.student_id || '—'}</code></td>
-                    <td>{u.email}</td>
-                    <td>{u.plan_name || '—'}</td>
-                    <td>{fdate(u.end_date)}</td>
-                    <td>
+                    <td style={{ verticalAlign: 'middle' }}><b>{u.first_name} {u.last_name}</b></td>
+                    <td style={{ verticalAlign: 'middle' }}><code>{u.student_id || '—'}</code></td>
+                    <td style={{ verticalAlign: 'middle' }}>{u.email}</td>
+                    <td style={{ verticalAlign: 'middle' }}>{u.plan_name || '—'}</td>
+                    <td style={{ verticalAlign: 'middle' }}>{fdate(u.end_date)}</td>
+                    <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>
                       <span className={'badge ' + (u.is_active_member ? 'b-ok' : u.membership_state === 'EXPIRED' ? 'b-bad' : 'b-warn')}>
-                        {u.is_active_member ? 'Active' : u.membership_state || 'Unpaid'}
+                        {u.is_active_member ? 'Active · Paid' : u.membership_state || 'Unpaid'}
                       </span>
                     </td>
-                    <td>
+                    <td style={{ verticalAlign: 'middle', textAlign: 'right' }}>
                       {!u.is_active_member && (
-                        <button className="sm" onClick={() => handleCollectDues(u)}>
-                          Collect dues
+                        <button className="sm pri" onClick={() => handleCollectDues(u)}>
+                          Collect Dues
                         </button>
                       )}
                     </td>
@@ -296,18 +337,24 @@ export function Members() {
 export function CheckIn() {
   const { notify } = useApp();
   const [code, setCode] = useState('');
-  const [ticketResult, setTicketResult] = useState<{ status: 'ok' | 'used' | 'missing' | 'error'; message?: string; data?: any } | null>(null);
+  const [ticketResult, setTicketResult] = useState<{
+    status: 'ok' | 'used' | 'missing' | 'error';
+    message?: string;
+    data?: any;
+  } | null>(null);
 
   const [q, setQ] = useState('');
   const [memberResult, setMemberResult] = useState<any>(null);
   const [checkingMember, setCheckingMember] = useState(false);
 
+  // Door Ticket Check-in with strict one-time enforcement
   const handleTicketCheckIn = async () => {
     if (!code.trim()) return;
     setTicketResult(null);
+    const cleanCode = code.trim();
     try {
       const res = await api.post<any>('/tickets/check-in', {
-        code: code.trim(),
+        code: cleanCode,
         method: 'MANUAL',
       });
       setTicketResult({
@@ -316,12 +363,22 @@ export function CheckIn() {
       });
       setCode('');
     } catch (e: any) {
+      // If backend returns 409 or already used
       if (e.status === 409 || e.message?.toLowerCase().includes('already')) {
-        setTicketResult({ status: 'used', message: e.message || 'Ticket was already checked in.' });
+        setTicketResult({
+          status: 'used',
+          message: e.message || 'Ticket has already been checked in. One-time entrance only.',
+        });
       } else if (e.status === 404 || e.message?.toLowerCase().includes('not found')) {
-        setTicketResult({ status: 'missing', message: 'Ticket code not found.' });
+        setTicketResult({
+          status: 'missing',
+          message: `Ticket code "${cleanCode}" not found in registry.`,
+        });
       } else {
-        setTicketResult({ status: 'error', message: e.message });
+        setTicketResult({
+          status: 'error',
+          message: e.message || 'Check-in failed.',
+        });
       }
     }
   };
@@ -344,43 +401,97 @@ export function CheckIn() {
 
   return (
     <>
-      <Head title="Door Check-in" sub="Scan ticket codes or verify membership eligibility at the venue entrance." />
+      <Head
+        title="Door Check-in & Verification"
+        sub="Strict one-time entrance check-in: QR / ticket codes cannot be reused. Verify active membership eligibility at the door."
+      />
 
       <div className="grid g2">
         {/* Ticket check-in card */}
         <div className="card">
-          <h2>Ticket Check-in</h2>
-          <label>Ticket code</label>
+          <h2>One-Time Ticket Check-in</h2>
+          <label>Scan QR or Enter Ticket Code</label>
           <input
             autoFocus
-            placeholder="e.g. SKY-001 or scan QR"
+            placeholder="e.g. TKT-ABC12345"
             value={code}
             onChange={e => setCode(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleTicketCheckIn()}
           />
-          <button className="pri mt" onClick={handleTicketCheckIn}>Check in</button>
+          <button className="pri mt" onClick={handleTicketCheckIn}>
+            Verify & Check In
+          </button>
 
+          {/* Result Banners */}
           {ticketResult?.status === 'ok' && (
-            <div className="res ok" style={{ marginTop: 14 }}>
-              <b>✓ Valid Ticket — Access Granted</b>
-              <div>{ticketResult.data?.buyer_name || 'Attendee'} · {ticketResult.data?.event_name}</div>
-              <div className="mut sans" style={{ fontSize: 12 }}>Code: {ticketResult.data?.ticket_code}</div>
+            <div
+              className="res ok"
+              style={{
+                marginTop: 16,
+                padding: '16px',
+                border: '2px solid var(--ok)',
+                borderRadius: 8,
+              }}
+            >
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ok)' }}>
+                ✓ ACCESS GRANTED — TICKET VALID
+              </div>
+              <div style={{ fontSize: 14, marginTop: 4 }}>
+                Attendee: <b>{ticketResult.data?.buyer_name || 'Member'}</b>
+              </div>
+              <div style={{ fontSize: 13, marginTop: 2 }}>
+                Event: <b>{ticketResult.data?.event_name}</b>
+              </div>
+              <div className="mut sans" style={{ fontSize: 12, marginTop: 6 }}>
+                Code: <code>{ticketResult.data?.ticket_code}</code> · Status: <b>CHECKED IN (USED)</b>
+              </div>
             </div>
           )}
+
           {ticketResult?.status === 'used' && (
-            <div className="res warn" style={{ marginTop: 14 }}>
-              <b>Already Used</b>
-              <div>{ticketResult.message}</div>
+            <div
+              className="res bad"
+              style={{
+                marginTop: 16,
+                padding: '16px',
+                border: '2px solid var(--bad)',
+                borderRadius: 8,
+                background: '#fff3f0',
+              }}
+            >
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--bad)' }}>
+                ⛔ ENTRANCE DENIED — TICKET ALREADY USED
+              </div>
+              <div style={{ fontSize: 13.5, marginTop: 6, color: '#333' }}>
+                {ticketResult.message}
+              </div>
+              <div className="mut sans" style={{ fontSize: 12, marginTop: 6 }}>
+                ⚠️ This ticket has already been used for admission. Duplicate entry is strictly prohibited.
+              </div>
             </div>
           )}
+
           {ticketResult?.status === 'missing' && (
-            <div className="res bad" style={{ marginTop: 14 }}>
-              <b>Invalid Ticket Code</b>
-              <div>Please check the code or verify attendee identity.</div>
+            <div
+              className="res bad"
+              style={{
+                marginTop: 16,
+                padding: '16px',
+                border: '2px solid var(--bad)',
+                borderRadius: 8,
+              }}
+            >
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--bad)' }}>
+                ❌ INVALID TICKET
+              </div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>
+                {ticketResult.message}
+              </div>
             </div>
           )}
+
           {ticketResult?.status === 'error' && (
-            <div className="res bad" style={{ marginTop: 14 }}>
+            <div className="res bad" style={{ marginTop: 16, padding: 14 }}>
               <b>Error:</b> {ticketResult.message}
             </div>
           )}
@@ -388,11 +499,11 @@ export function CheckIn() {
 
         {/* Member verification card */}
         <div className="card">
-          <h2>Verify Member at Door</h2>
-          <label>Student ID or Email</label>
+          <h2>Verify Member Status at Door</h2>
+          <label>Search Student ID or Email</label>
           <div className="row" style={{ gap: 8 }}>
             <input
-              placeholder="e.g. SKY-10010 or student@skyline.edu"
+              placeholder="e.g. SKY-00002 or alex@skyline.edu"
               value={q}
               onChange={e => setQ(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleMemberVerify()}
@@ -400,21 +511,31 @@ export function CheckIn() {
             <button onClick={handleMemberVerify}>Verify</button>
           </div>
 
-          {checkingMember && <div className="mut sans mt">Verifying…</div>}
+          {checkingMember && <div className="mut sans mt">Verifying member record…</div>}
 
           {memberResult && (
-            <div style={{ marginTop: 14 }}>
+            <div style={{ marginTop: 16 }}>
               {memberResult.found ? (
-                <div className={'res ' + (memberResult.membership?.is_active ? 'ok' : 'bad')}>
-                  <b>{memberResult.member.first_name} {memberResult.member.last_name}</b> · {memberResult.member.student_id}
-                  <div>
+                <div
+                  className={'res ' + (memberResult.membership?.is_active ? 'ok' : 'bad')}
+                  style={{ padding: 14, borderRadius: 8 }}
+                >
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>
+                    {memberResult.member.first_name} {memberResult.member.last_name}
+                  </div>
+                  <div className="mut sans" style={{ fontSize: 13, margin: '3px 0' }}>
+                    Student ID: <code>{memberResult.member.student_id}</code> · {memberResult.member.email}
+                  </div>
+                  <div style={{ fontWeight: 600, marginTop: 6 }}>
                     {memberResult.membership?.is_active
-                      ? `Active Member (${memberResult.membership?.plan_name}) — Dues Paid`
-                      : `Not an active member (${memberResult.membership?.state || 'Unpaid'})`}
+                      ? `✓ Active Member (${memberResult.membership?.plan_name}) — Dues Paid`
+                      : `✗ Inactive / Unpaid (${memberResult.membership?.state || 'No Active Plan'})`}
                   </div>
                 </div>
               ) : (
-                <div className="res bad">No student profile found for &quot;{memberResult.query}&quot;.</div>
+                <div className="res bad" style={{ padding: 14 }}>
+                  No student profile found for &quot;{memberResult.query}&quot;.
+                </div>
               )}
             </div>
           )}
@@ -429,6 +550,7 @@ export function Finance() {
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   const [newTx, setNewTx] = useState({
     type: 'INCOME',
@@ -443,7 +565,7 @@ export function Finance() {
     setLoading(true);
     Promise.all([
       api.get<FinanceSummary>('/finance/summary'),
-      api.get<{ items: Transaction[] }>('/finance/transactions?page_size=100'),
+      api.get<{ items: Transaction[] }>('/finance/transactions?page_size=200'),
     ])
       .then(([sum, txRes]) => {
         setSummary(sum);
@@ -495,6 +617,16 @@ export function Finance() {
   const incomeCategories = ['MEMBERSHIP_DUES', 'TICKET_SALES', 'MERCHANDISE_SALES', 'FUNDRAISER', 'SPONSORSHIP', 'OTHER_INCOME'];
   const expenseCategories = ['EVENT_EXPENSE', 'MERCHANDISE_PRODUCTION', 'SUPPLIES', 'MARKETING', 'REIMBURSEMENT', 'OTHER_EXPENSE'];
 
+  const filteredTransactions = transactions.filter(t => {
+    const q = search.toLowerCase();
+    return (
+      t.description.toLowerCase().includes(q) ||
+      t.category.toLowerCase().includes(q) ||
+      t.type.toLowerCase().includes(q) ||
+      (t.id || '').toLowerCase().includes(q)
+    );
+  });
+
   return (
     <>
       <Head title="Finance & Ledger" sub="Real-time balance, double-entry audit trail, and income breakdowns." />
@@ -517,9 +649,9 @@ export function Finance() {
             </div>
 
             {showAdd && (
-              <div className="row mt" style={{ alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 110 }}>
-                  <label>Type</label>
+              <div className="mt" style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr 2fr 1fr 1.2fr auto', gap: 12, alignItems: 'flex-end' }}>
+                <div>
+                  <label style={{ margin: '0 0 6px' }}>Type</label>
                   <select
                     value={newTx.type}
                     onChange={e => {
@@ -535,24 +667,24 @@ export function Finance() {
                     <option value="EXPENSE">Expense (−)</option>
                   </select>
                 </div>
-                <div style={{ flex: 1, minWidth: 160 }}>
-                  <label>Category</label>
+                <div>
+                  <label style={{ margin: '0 0 6px' }}>Category</label>
                   <select value={newTx.category} onChange={e => setNewTx({ ...newTx, category: e.target.value })}>
                     {(newTx.type === 'INCOME' ? incomeCategories : expenseCategories).map(c => (
                       <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
                     ))}
                   </select>
                 </div>
-                <div style={{ flex: 2, minWidth: 180 }}>
-                  <label>Description</label>
+                <div>
+                  <label style={{ margin: '0 0 6px' }}>Description</label>
                   <input
                     value={newTx.description}
                     onChange={e => setNewTx({ ...newTx, description: e.target.value })}
                     placeholder="e.g. Sponsor donation, venue fee"
                   />
                 </div>
-                <div style={{ flex: 1, minWidth: 100 }}>
-                  <label>Amount (₹)</label>
+                <div>
+                  <label style={{ margin: '0 0 6px' }}>Amount (₹)</label>
                   <input
                     type="number"
                     value={newTx.amount}
@@ -560,56 +692,68 @@ export function Finance() {
                     placeholder="0.00"
                   />
                 </div>
-                <div style={{ flex: 1, minWidth: 130 }}>
-                  <label>Date</label>
+                <div>
+                  <label style={{ margin: '0 0 6px' }}>Date</label>
                   <input
                     type="date"
                     value={newTx.date}
                     onChange={e => setNewTx({ ...newTx, date: e.target.value })}
                   />
                 </div>
-                <button className="pri" onClick={handleCreateTx}>Post Entry</button>
+                <div>
+                  <button className="pri" style={{ height: 38, whiteSpace: 'nowrap' }} onClick={handleCreateTx}>Post Entry</button>
+                </div>
               </div>
             )}
           </div>
 
           <div className="card mt">
-            <h2>Transaction Ledger</h2>
+            <div className="row sp" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+              <h2>Transaction Ledger ({transactions.length})</h2>
+              <input
+                type="search"
+                placeholder="Search transactions by description, category, type…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ maxWidth: 360 }}
+              />
+            </div>
+
             <table>
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Category</th>
+                  <th style={{ width: 110 }}>Date</th>
+                  <th style={{ width: 150 }}>Category</th>
                   <th>Description</th>
-                  <th>Type</th>
-                  <th style={{ textAlign: 'right' }}>Amount</th>
-                  <th></th>
+                  <th style={{ width: 110, textAlign: 'center' }}>Type</th>
+                  <th style={{ width: 120, textAlign: 'right' }}>Amount</th>
+                  <th style={{ width: 90, textAlign: 'right' }}></th>
                 </tr>
               </thead>
               <tbody>
-                {transactions.length === 0 ? (
-                  <tr><td colSpan={6} className="mut">No transactions recorded.</td></tr>
+                {filteredTransactions.length === 0 ? (
+                  <tr><td colSpan={6} className="mut" style={{ textAlign: 'center', padding: '20px 0' }}>No transactions match your search.</td></tr>
                 ) : (
-                  transactions.map(t => {
+                  filteredTransactions.map(t => {
                     const isInc = t.type === 'INCOME';
                     return (
                       <tr key={t.id} style={{ opacity: t.reversed ? 0.4 : 1 }}>
-                        <td>{fdate(t.date)}</td>
-                        <td><span className="badge">{t.category}</span></td>
-                        <td>
+                        <td style={{ verticalAlign: 'middle' }}>{fdate(t.date)}</td>
+                        <td style={{ verticalAlign: 'middle' }}><span className="badge">{t.category?.replace(/_/g, ' ')}</span></td>
+                        <td style={{ verticalAlign: 'middle' }}>
                           {t.description}
                           {t.is_reversal && <span className="mut sans" style={{ fontSize: 11, marginLeft: 6 }}>(Reversal)</span>}
                           {t.reversed && <span className="mut sans" style={{ fontSize: 11, marginLeft: 6 }}>(Reversed)</span>}
                         </td>
-                        <td>
+                        <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>
                           <span className={'badge ' + (isInc ? 'b-ok' : 'b-bad')}>
                             {t.type}
                           </span>
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: 600, color: isInc ? 'var(--ok)' : 'var(--bad)' }}>
+                        <td style={{ textAlign: 'right', verticalAlign: 'middle', fontWeight: 600, color: isInc ? 'var(--ok)' : 'var(--bad)' }}>
                           {isInc ? '+' : '−'}{money(t.amount)}
                         </td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
                           {!t.is_reversal && !t.reversed && (
                             <button className="sm" onClick={() => handleReverse(t.id)}>
                               Reverse

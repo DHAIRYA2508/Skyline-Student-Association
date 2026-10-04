@@ -51,7 +51,9 @@ def summary(db: Session, member: Member) -> dict:
         "days_until_expiry": days, "payment_status": latest.payment_status,
         "needs_renewal": state != "ACTIVE" or days <= RENEWAL_WINDOW_DAYS,
         "event_discount_percentage": float(plan.event_discount_percentage) if plan and cur else 0,
+        "event_discount": float(plan.event_discount_percentage) if plan and cur else 0,
         "merchandise_discount_percentage": float(plan.merchandise_discount_percentage) if plan and cur else 0,
+        "merch_discount": float(plan.merchandise_discount_percentage) if plan and cur else 0,
         "benefits": benefits, "member_status": member.status,
     }
 

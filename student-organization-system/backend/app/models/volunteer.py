@@ -28,7 +28,7 @@ class Fundraiser(Base):
     description = Column(Text, nullable=True)
     target_amount = Column(Numeric(12, 2), nullable=False)
     amount_raised = Column(Numeric(12, 2), nullable=False, default=0.00)
-    currency = Column(String(3), nullable=False, default="USD")
+    currency = Column(String(3), nullable=False, default="INR")
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=True)
     status = Column(String(30), nullable=False, default="PLANNED")

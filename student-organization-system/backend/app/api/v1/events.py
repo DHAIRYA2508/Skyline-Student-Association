@@ -14,13 +14,14 @@ def event_out(db: Session, e: Event, ctx: Ctx, with_stats: bool = False) -> dict
     taken = esvc.seats_taken(db, e.id)
     member = ctx.member
     price, ttype = esvc.price_for(db, e, member)
+    st = esvc.stats(db, e)
     out = {"id": s(e.id), "name": e.name, "description": e.description, "venue": e.venue,
            "start_datetime": iso(e.start_datetime), "end_datetime": iso(e.end_datetime), "capacity": e.capacity,
            "seats_taken": taken, "seats_left": max(e.capacity - taken, 0), "member_price": money(e.member_price),
            "non_member_price": money(e.non_member_price), "your_price": float(price), "your_price_type": ttype,
-           "status": e.status}
+           "status": e.status, "sold": st["sold"], "revenue": float(st["revenue"]), "checked_in": st["checked_in"]}
     if with_stats:
-        out["stats"] = esvc.stats(db, e)
+        out["stats"] = st
     return out
 
 
@@ -41,7 +42,7 @@ def list_events(scope: str = "upcoming", ctx: Ctx = Depends(current_ctx)):
 
 @router.post("", status_code=201)
 def create_event(body: EventIn, ctx: Ctx = Depends(require("events.manage"))):
-    e = Event(id=new_id(), organization_id=ctx.org_id, created_by=s(ctx.user.id), status="DRAFT", currency="USD",
+    e = Event(id=new_id(), organization_id=ctx.org_id, created_by=s(ctx.user.id), status="DRAFT", currency="INR",
               **{**body.model_dump(), "start_datetime": naive(body.start_datetime), "end_datetime": naive(body.end_datetime)})
     ctx.db.add(e)
     audit.log(ctx.db, ctx, "EVENT_CREATED", "Event", e.id, new=body.model_dump())

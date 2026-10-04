@@ -28,7 +28,7 @@ def place(body: OrderIn, ctx: Ctx = Depends(current_ctx)):
         merged[it.variant_id] = merged.get(it.variant_id, 0) + it.quantity
     from app.schemas.requests import OrderItemIn
     items = [OrderItemIn(variant_id=k, quantity=v) for k, v in merged.items()]
-    o = osvc.place_order(ctx.db, ctx, items, body.payment_method, ctx.member)
+    o = osvc.place_order(ctx.db, ctx, items, body.payment_method, ctx.member, getattr(body, 'discount_percentage', None))
     audit.log(ctx.db, ctx, "ORDER_PLACED", "Order", o.id, new={"number": o.order_number, "total": money(o.total_amount)})
     ctx.db.commit()
     return order_out(ctx.db, o)

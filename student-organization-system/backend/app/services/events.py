@@ -38,21 +38,34 @@ def purchase(db: Session, ctx, event: Event, qty: int, member: Optional[Member],
     remaining = event.capacity - seats_taken(db, event.id)
     if qty > remaining:
         raise HTTPException(409, f"Only {max(remaining, 0)} seat(s) left for this event")
-    price, ttype = price_for(db, event, member)
+    has_member_disc = member is not None and msvc.is_active_member(db, member.id)
+    mem_price = q(event.member_price)
+    reg_price = q(event.non_member_price)
+
     tickets = []
-    for _ in range(qty):
+    for idx in range(qty):
+        # First ticket gets member discount if eligible; extra tickets are regular fare
+        if idx == 0 and has_member_disc:
+            price = mem_price
+            ttype = "MEMBER"
+        else:
+            price = reg_price
+            ttype = "NON_MEMBER"
+
         t = EventTicket(
             id=new_id(), organization_id=s(event.organization_id), event_id=s(event.id),
-            member_id=s(member.id) if member else None, buyer_name=buyer_name, buyer_email=buyer_email,
+            member_id=s(member.id) if (member and idx == 0) else None,
+            buyer_name=buyer_name if idx == 0 else f"{buyer_name} (Guest {idx})",
+            buyer_email=buyer_email,
             ticket_code=token_code("TKT"), qr_token=secrets.token_urlsafe(24), ticket_type=ttype,
-            price=price, currency=event.currency, payment_status="PAID" if True else "PENDING",
+            price=price, currency=event.currency, payment_status="PAID",
             status="CONFIRMED", purchased_at=now())
         db.add(t)
         db.flush()
         tickets.append(t)
         if price > 0:
             ledger.record(db, event.organization_id, ledger.INCOME, "EVENT_TICKETS", price, sold_by,
-                          f"Ticket {t.ticket_code} - {event.name}", "TICKET", t.id, currency=event.currency)
+                          f"Ticket {t.ticket_code} ({ttype}) - {event.name}", "TICKET", t.id, currency=event.currency)
     return tickets
 
 

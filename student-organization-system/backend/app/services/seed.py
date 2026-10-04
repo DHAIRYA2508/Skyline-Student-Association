@@ -71,10 +71,10 @@ def _backdated_membership(db, org, user, member, plan, start: date):
 def seed_demo(db: Session, org: Organization) -> None:
     if db.query(User).filter(User.organization_id == s(org.id)).first():
         return
-    # ---- plans -----------------------------------------------------------------
-    basic = MembershipPlan(id=new_id(), organization_id=s(org.id), name="Student Basic", price=10, duration_months=6,
+    # ---- plans (1 USD = 96 INR) ------------------------------------------------
+    basic = MembershipPlan(id=new_id(), organization_id=s(org.id), name="Student Basic", price=960, duration_months=6,
                            description="Six months of club membership.", event_discount_percentage=10, merchandise_discount_percentage=5)
-    gold = MembershipPlan(id=new_id(), organization_id=s(org.id), name="Gold Annual", price=25, duration_months=12,
+    gold = MembershipPlan(id=new_id(), organization_id=s(org.id), name="Gold Annual", price=2400, duration_months=12,
                           description="A full year with the best perks.", event_discount_percentage=20, merchandise_discount_percentage=15)
     db.add_all([basic, gold])
     db.flush()
@@ -111,7 +111,7 @@ def seed_demo(db: Session, org: Organization) -> None:
     db.flush()
     sweep = msvc.sweep(db, org.id)  # noqa: F841
     ctx_root = SimpleNamespace(user=root, org_id=s(org.id), request=None)
-    # ---- events ----------------------------------------------------------------
+    # ---- events (1 USD = 96 INR) -----------------------------------------------
     def ev(name, desc, venue, start_days, hours, cap, mp, nmp, status="PUBLISHED"):
         st = now().replace(minute=0, second=0, microsecond=0) + timedelta(days=start_days)
         e = Event(id=new_id(), organization_id=s(org.id), name=name, description=desc, venue=venue, start_datetime=st,
@@ -120,31 +120,38 @@ def seed_demo(db: Session, org: Organization) -> None:
         db.add(e)
         db.flush()
         return e
-    gala = ev("Spring Gala", "The biggest night of the semester: live music, food and a charity raffle.", "Skyline Grand Hall", 21, 5, 150, 20, 35)
-    mic = ev("Open Mic Night", "Sing, rap, read or just cheer on your friends.", "Student Union Cafe", 6, 3, 60, 5, 8)
+    gala = ev("Spring Gala", "The biggest night of the semester: live music, food and a charity raffle.", "Skyline Grand Hall", 21, 5, 150, 1920, 3360)
+    mic = ev("Open Mic Night", "Sing, rap, read or just cheer on your friends.", "Student Union Cafe", 6, 3, 60, 480, 768)
     ev("Hack Night", "Draft - pizza-powered coding session.", "Lab 204", 35, 6, 40, 0, 0, status="DRAFT")
-    past = ev("Welcome Mixer", "Start-of-term meet and greet.", "Courtyard", 1, 3, 80, 4, 8)
-    for k in ("john", "maya", "vol", "lena"):
-        esvc.purchase(db, ctx_root, gala, 1, M(k), f"{M(k).first_name} {M(k).last_name}", M(k).email, "CARD", U(k).id)
-    esvc.purchase(db, ctx_root, gala, 2, None, "Guest Visitors", "guests@example.com", "CASH", U("events").id)
-    esvc.purchase(db, ctx_root, mic, 1, M("john"), "John Doe", M("john").email, "CARD", U("john").id)
-    tickets = []
-    for k in ("john", "maya", "omar", "vol", "lena", "head"):
-        tickets += esvc.purchase(db, ctx_root, past, 1, M(k), f"{M(k).first_name} {M(k).last_name}", M(k).email, "CARD", U(k).id)
-    tickets += esvc.purchase(db, ctx_root, past, 3, None, "Walk-in Guests", "walkin@example.com", "CASH", U("events").id)
+    past = ev("Welcome Mixer", "Start-of-term meet and greet.", "Courtyard", 1, 3, 80, 384, 768, status="PUBLISHED")
+    # Seed ticket sales for Spring Gala
+    for k in ("john", "maya", "vol", "lena", "riya"):
+        esvc.purchase(db, ctx_root, gala, 2, M(k), f"{M(k).first_name} {M(k).last_name}", M(k).email, "CARD", U(k).id)
+    esvc.purchase(db, ctx_root, gala, 4, None, "Guest Visitors", "guests@example.com", "CASH", U("events").id)
+
+    # Seed ticket sales for Open Mic
+    esvc.purchase(db, ctx_root, mic, 2, M("john"), "John Doe", M("john").email, "CARD", U("john").id)
+    esvc.purchase(db, ctx_root, mic, 3, M("riya"), "Riya Sharma", M("riya").email, "CARD", U("riya").id)
+    esvc.purchase(db, ctx_root, mic, 5, None, "Walk-in Music Fans", "music@example.com", "CASH", U("events").id)
+
+    # Seed ticket sales & door check-ins for Past Welcome Mixer
+    past_tickets = []
+    for k in ("john", "maya", "omar", "vol", "lena", "head", "riya"):
+        past_tickets += esvc.purchase(db, ctx_root, past, 2, M(k), f"{M(k).first_name} {M(k).last_name}", M(k).email, "CARD", U(k).id)
+    past_tickets += esvc.purchase(db, ctx_root, past, 6, None, "Walk-in Guests", "walkin@example.com", "CASH", U("events").id)
     ctx_ev = SimpleNamespace(user=U("events"), org_id=s(org.id), request=None)
-    for t in tickets[:7]:
+    for t in past_tickets[:12]:
         esvc.check_in(db, ctx_ev, t, "QR")
     past.start_datetime, past.end_datetime, past.status = now() - timedelta(days=5, hours=3), now() - timedelta(days=5), "COMPLETED"
     # ---- announcements -----------------------------------------------------------
     for title, body, aud, pub in [
-        ("Spring Gala tickets are live!", "Member tickets are $20, non-member $35. Gold members get priority seating. Grab yours in the Events tab.", "ALL", True),
+        ("Spring Gala tickets are live!", "Member tickets are ₹1,920, non-member ₹3,360. Gold members get priority seating. Grab yours in the Events tab.", "ALL", True),
         ("General meeting this Thursday", "We're electing next year's leadership team. Pizza provided, bring your student ID.", "MEMBERS", True),
         ("Volunteer briefing: bake sale", "Volunteers - please check your task list and confirm what you're bringing.", "VOLUNTEERS", True),
         ("Draft: Hoodie pre-order reminder", "Last call for hoodie sizes. Stock is limited.", "ALL", False)]:
         db.add(Announcement(id=new_id(), organization_id=s(org.id), title=title, content=body, audience_type=aud,
                             status="PUBLISHED" if pub else "DRAFT", created_by=s(U("head").id), published_at=now() if pub else None))
-    # ---- merchandise -------------------------------------------------------------
+    # ---- merchandise (1 USD = 96 INR) ------------------------------------------
     from app.api.v1.products import _add_variant
     from app.schemas.requests import VariantIn
     ctx_inv = SimpleNamespace(user=U("inv"), org_id=s(org.id), request=None)
@@ -156,33 +163,33 @@ def seed_demo(db: Session, org: Organization) -> None:
         for v in variants:
             _add_variant(db, ctx_inv, p, v)
         return p
-    hoodie = prod("Skyline Hoodie", "Heavyweight fleece hoodie with the embroidered skyline crest.", "Hoodies", 42,
+    hoodie = prod("Skyline Hoodie", "Heavyweight fleece hoodie with the embroidered skyline crest.", "Hoodies", 4032,
                   [VariantIn(sku=f"HOOD-{z}", size=z, color="Navy", quantity=q, low_stock_threshold=4) for z, q in (("S", 12), ("M", 20), ("L", 15), ("XL", 3))])
-    prod("Club T-Shirt", "Soft cotton tee in club colors.", "T-Shirts", 18,
+    prod("Club T-Shirt", "Soft cotton tee in club colors.", "T-Shirts", 1728,
          [VariantIn(sku=f"TEE-{z}", size=z, color="White", quantity=q, low_stock_threshold=6) for z, q in (("S", 30), ("M", 25), ("L", 4))])
-    prod("Canvas Tote", "Everyday tote with the club logo.", "Accessories", 10, [VariantIn(sku="TOTE-OS", size="One size", color="Natural", quantity=40, low_stock_threshold=8)])
+    prod("Canvas Tote", "Everyday tote with the club logo.", "Accessories", 960, [VariantIn(sku="TOTE-OS", size="One size", color="Natural", quantity=40, low_stock_threshold=8)])
     db.flush()
     from app.models.merchandise import ProductVariant
     vm = db.query(ProductVariant).filter(ProductVariant.sku == "HOOD-M").first()
     vl = db.query(ProductVariant).filter(ProductVariant.sku == "HOOD-L").first()
     vt = db.query(ProductVariant).filter(ProductVariant.sku == "TEE-M").first()
-    for k, items in (("john", [(vm, 1), (vt, 2)]), ("maya", [(vl, 1)]), ("lena", [(vt, 1)])):
+    for k, items in (("john", [(vm, 1), (vt, 2)]), ("maya", [(vl, 1)]), ("lena", [(vt, 1)]), ("riya", [(vm, 1)])):
         c = SimpleNamespace(user=U(k), org_id=s(org.id))
         osvc.place_order(db, c, [OrderItemIn(variant_id=s(v.id), quantity=n) for v, n in items], "CARD", M(k))
-    # ---- volunteers / fundraisers -----------------------------------------------
+    # ---- volunteers / fundraisers (1 USD = 96 INR) ------------------------------
     vols = {}
     for k, skills, avail in (("vol", "Baking, social media", "Weekends"), ("lena", "Design, event setup", "Weekday evenings")):
         vols[k] = VolunteerProfile(id=new_id(), organization_id=s(org.id), member_id=s(M(k).id), skills=skills, availability=avail)
         db.add(vols[k])
     db.flush()
     bake = Fundraiser(id=new_id(), organization_id=s(org.id), name="Spring Bake Sale", description="Table outside the library; all proceeds fund the Spring Gala.",
-                      target_amount=500, start_date=today() - timedelta(days=3), end_date=today() + timedelta(days=9), status="ACTIVE", created_by=s(U("coord").id))
+                      target_amount=48000, start_date=today() - timedelta(days=3), end_date=today() + timedelta(days=9), status="ACTIVE", created_by=s(U("coord").id))
     db.add(bake)
     db.add(Fundraiser(id=new_id(), organization_id=s(org.id), name="Hoodie Crowdfund", description="Pre-orders to fund the next hoodie batch.",
-                      target_amount=1200, start_date=today() + timedelta(days=14), status="PLANNED", created_by=s(U("coord").id)))
+                      target_amount=115200, start_date=today() + timedelta(days=14), status="PLANNED", created_by=s(U("coord").id)))
     db.flush()
-    ledger.record(db, org.id, ledger.INCOME, "FUNDRAISER", 140, U("coord").id, "Bake sale - Saturday table", "FUNDRAISER", bake.id)
-    ledger.record(db, org.id, ledger.INCOME, "FUNDRAISER", 75.50, U("coord").id, "Bake sale - Sunday table", "FUNDRAISER", bake.id)
+    ledger.record(db, org.id, ledger.INCOME, "FUNDRAISER", 13440, U("coord").id, "Bake sale - Saturday table", "FUNDRAISER", bake.id)
+    ledger.record(db, org.id, ledger.INCOME, "FUNDRAISER", 7248, U("coord").id, "Bake sale - Sunday table", "FUNDRAISER", bake.id)
     for title, desc, pri, status, who in [
         ("Bake 3 dozen cookies", "Chocolate chip + oatmeal.", "HIGH", "IN_PROGRESS", ["vol"]),
         ("Buy supplies", "Flour, sugar, packaging, price signs.", "MEDIUM", "DONE", ["lena"]),
@@ -195,7 +202,7 @@ def seed_demo(db: Session, org: Organization) -> None:
         for w in who:
             db.add(TaskAssignment(id=new_id(), task_id=s(t.id), volunteer_id=s(vols[w].id), assigned_by=s(U("coord").id),
                                   completed_at=now() if status == "DONE" else None))
-    # ---- expenses ---------------------------------------------------------------
+    # ---- expenses (1 USD = 96 INR) ----------------------------------------------
     def exp(user, cat, desc, amt, days_ago, receipt=True):
         e = Expense(id=new_id(), organization_id=s(org.id), submitted_by=s(user.id), category=cat, description=desc, amount=amt,
                     expense_date=today() - timedelta(days=days_ago), status="SUBMITTED")
@@ -206,16 +213,16 @@ def seed_demo(db: Session, org: Organization) -> None:
                                   mime_type="image/jpeg", uploaded_by=s(user.id)))
         return e
     ctx_tr = SimpleNamespace(user=U("treas"), org_id=s(org.id), request=None)
-    e1 = exp(U("lena"), "SUPPLIES", "Bake sale ingredients and packaging", 48.50, 4)
+    e1 = exp(U("lena"), "SUPPLIES", "Bake sale ingredients and packaging", 4656, 4)
     xsvc.review(db, ctx_tr, e1, "APPROVE")
     xsvc.reimburse(db, ctx_tr, e1, "BANK_TRANSFER", "BT-20481")
-    e2 = exp(U("vol"), "SUPPLIES", "Poster printing for Open Mic", 32.00, 2)
-    e3 = exp(U("events"), "EVENT_EXPENSE", "Sound equipment rental - Welcome Mixer", 120.00, 6)
+    e2 = exp(U("vol"), "SUPPLIES", "Poster printing for Open Mic", 3072, 2)
+    e3 = exp(U("events"), "EVENT_EXPENSE", "Sound equipment rental - Welcome Mixer", 11520, 6)
     xsvc.review(db, ctx_tr, e3, "APPROVE")
-    e4 = exp(U("vol"), "OTHER_EXPENSE", "Team coffee run", 22.00, 5, receipt=False)
+    e4 = exp(U("vol"), "OTHER_EXPENSE", "Team coffee run", 2112, 5, receipt=False)
     xsvc.review(db, ctx_tr, e4, "REJECT", "No receipt provided")
-    ledger.record(db, org.id, ledger.INCOME, "OTHER_INCOME", 100, U("treas").id, "Alumni donation", "MANUAL")
-    ledger.record(db, org.id, ledger.EXPENSE, "EVENT_EXPENSE", 60, U("treas").id, "Venue deposit - Spring Gala", "MANUAL")
+    ledger.record(db, org.id, ledger.INCOME, "OTHER_INCOME", 9600, U("treas").id, "Alumni donation", "MANUAL")
+    ledger.record(db, org.id, ledger.EXPENSE, "EVENT_EXPENSE", 5760, U("treas").id, "Venue deposit - Spring Gala", "MANUAL")
     db.flush()
 
 

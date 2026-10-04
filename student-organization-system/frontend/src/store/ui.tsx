@@ -23,7 +23,7 @@ export function Layout() {
     ['/shop', 'Merchandise'],
     ['/fundraisers', 'Fundraisers'],
     ['/expenses', 'Expenses'],
-    ['/membership', 'My Membership'],
+    ['/membership', isStaff ? 'Membership Plans' : 'My Membership'],
   ];
   const staffLinks: [string, string][] = [
     ['/members', 'Members'],

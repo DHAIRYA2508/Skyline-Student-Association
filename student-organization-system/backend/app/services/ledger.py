@@ -17,7 +17,7 @@ CATEGORIES_OUT = ["REIMBURSEMENT", "EVENT_EXPENSE", "SUPPLIES", "OTHER_EXPENSE"]
 
 def record(db: Session, org_id, kind: str, category: str, amount, user_id, description: str = "",
            ref_type: Optional[str] = None, ref_id=None, reversal_of=None, when: Optional[datetime] = None,
-           currency: str = "USD") -> Transaction:
+           currency: str = "INR") -> Transaction:
     amount = q(amount)
     if amount <= 0:
         raise HTTPException(400, "Transaction amount must be positive")
